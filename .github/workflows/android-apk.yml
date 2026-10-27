@@ -1,1 +1,70 @@
 
+name: Build Soukhin Admin APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Extract uploaded Flutter ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f pubspec.yaml ]; then
+            archive="$(find . -maxdepth 1 -type f -iname '*.zip' -print -quit)"
+            if [ -z "$archive" ]; then
+              echo 'Upload the Soukhin Flutter source ZIP in the repository root.' >&2
+              exit 1
+            fi
+            echo "Using archive: $archive"
+            unzip -oq "$archive" -d . -x '.github/*'
+          fi
+          test -s pubspec.yaml
+          test -s lib/main.dart
+          test -s tools/prepare_android.py
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Create Android project
+        run: |
+          flutter create --project-name soukhin_admin --platforms=android --org com.soukhinjewellery .
+          python3 tools/prepare_android.py
+          rm -f test/widget_test.dart
+          flutter pub get
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build Android APK
+        run: flutter build apk --debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Soukhin-Admin-APK
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
